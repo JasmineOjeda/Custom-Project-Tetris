@@ -1,12 +1,13 @@
   /*	Author: Jasmine Ojeda jojed016@ucr.edu
  *	Lab Section: 022
  *	Assignment: Custom Lab Project
- *	Exercise Description: [optional - include for your own benefit]
+ *	Exercise Description: Configuring joystick to atmega1284 using similar
+ *	                      method used in Lab #8. Using ADC channels 0 and 1.
  *
  *	I acknowledge all content contained herein, excluding template or example
  *	code, is my own original work.
  *
- *	Demo Link:
+ *	Demo Link: https://youtu.be/IX8FBsiuZNk
  */
 #include <avr/io.h>
 #ifdef _SIMULATE_
@@ -22,7 +23,7 @@ int main(void) {
     DDRB = 0xFF; PORTB = 0x00;
     DDRD = 0xFF; PORTD = 0x00;
 
-    DDRC = 0xFC; PORTC = 0x03;
+    DDRC = 0x00; PORTC = 0xFF;
 
     unsigned char tmp_B = 0x00;
     unsigned char tmp_D = 0x00;    
@@ -42,15 +43,7 @@ int main(void) {
 	else if (tmp_C == 0x02) {
             ADMUX = 0x01;
 	}
-        /*
-	if (ADMUX == 0x01) {
-           s = 0x04;
-	}
-	else {
-           s = 0x00;
-	}
-
-	PORTC = PORTC | s;*/
+        
         x = ADC;
 
         tmp_B = (char)x;
