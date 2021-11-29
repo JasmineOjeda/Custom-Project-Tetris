@@ -18,7 +18,8 @@
 #endif
 
 void ADC_init() {
-    ADCSRA |= (1 << ADEN) | (1 << ADSC) | (1 << ADATE);
+    ADMUX |= (1 << REFS0);
+    ADCSRA |= (1 << ADEN) | (1 << ADPS0) | (ADPS1) | (1 << ADPS2);
 }
 
 volatile unsigned char TimerFlag = 0;
@@ -81,22 +82,23 @@ uint8_t rows[8] = {
 	};
 
 enum JoystickStates {JOYSTICK_START, JOYSTICK_SET_DIRECTION} joystickState;
-unsigned char flip = 1;
 
 void JoystickSM() {
     unsigned short vertical;
     unsigned short horizontal;
 
-    flip = ~flip;
+    
+    ADMUX &= ~_BV(MUX0);;
+    ADCSRA |= (1 << ADSC);
+    while (ADCSRA & (1 << ADSC));
+    vertical = ADC;
+    
+    ADCSRA &= ~(1 << ADSC);
 
-    if (flip) {
-        ADMUX = 0x00;
-        vertical = ADC;
-    }
-    else {
-        ADMUX = 0x01;
-        horizontal = ADC;
-    }
+    ADMUX = _BV(MUX0);;
+    ADCSRA |= (1 << ADSC);
+    while (ADCSRA & (1 << ADSC));
+    horizontal = ADC;
 
     switch(joystickState) {
         case JOYSTICK_START:
@@ -117,31 +119,31 @@ void JoystickSM() {
 		break;
 	case JOYSTICK_SET_DIRECTION:
 		if(vertical <= 8) {
-                   up = 1; break;
+                   up = 1;
 		}
 		else {
                    up = 0;
 		}
 
 		if(vertical >= 0x3F0) {
-                    down = 1; break;
+                    down = 1;
 		}
 		else {
                     down = 0;
 		}
 
-		if(horizontal <= 7) {
-                   right = 1; break;
+		if(horizontal <= 8) {
+                   left = 1;
                 }
                 else {
-                   right = 0;
+                   left = 0;
                 }
 
-                if(horizontal >= 0x2F0) {
-                    left = 1; break;
+                if(horizontal >= 0x3F0) {
+                    right = 1;
                 }
                 else {
-                    left = 0;
+                    right = 0;
                 }
 		break;
         default: break;
@@ -214,10 +216,7 @@ int main(void) {
     /* Insert DDR and PORT initializations */
     DDRD = 0xFF; PORTD = 0x00;
 
-   // DDRC = 0xF8; PORTC = 0x07;
-    
     ADC_init();
-    ADMUX = 0x00;
 
     TimerSet(10);
     TimerOn();
