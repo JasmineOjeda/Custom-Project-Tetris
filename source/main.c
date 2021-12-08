@@ -8,14 +8,20 @@
  *
  *	Demo Link: https://youtu.be/bbx0JGYLw6A
  */
+#define F_CPU 1000000UL
+
 #include <stdio.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
+//#include <util/delay.h>
 #include "ledmatrix7219d88.h"
-
+#include "nokia5110.h"
+#include "blocks.h"
+/*
 #ifdef _SIMULATE_
 #include "simAVRHeader.h"
 #endif
+*/
 
 void ADC_init() {
     ADMUX |= (1 << REFS0);
@@ -62,43 +68,21 @@ void TimerSet(unsigned long M) {
     _avr_timer_cntcurr = _avr_timer_M;
 }
 
-unsigned char up = 0;
-unsigned char down = 0;
 unsigned char right = 0;
 unsigned char left = 0;
-
-uint8_t cur_col = 4;
-uint8_t cur_row = 4;
-
-uint8_t rows[8] = {
-			0b10000000,
-			0b01000000,
-			0b00100000,
-			0b00010000,
-			0b00001000,
-			0b00000100,
-			0b00000010,
-			0b00000001
-	};
+unsigned char sound_detected = 1;
 
 enum JoystickStates {JOYSTICK_START, JOYSTICK_SET_DIRECTION} joystickState;
 
 void JoystickSM() {
-    unsigned short vertical;
     unsigned short horizontal;
 
-    
-    ADMUX &= ~_BV(MUX0);;
-    ADCSRA |= (1 << ADSC);
-    while (ADCSRA & (1 << ADSC));
-    vertical = ADC;
-    
-    ADCSRA &= ~(1 << ADSC);
-
-    ADMUX = _BV(MUX0);;
+    ADMUX = 0x01;
     ADCSRA |= (1 << ADSC);
     while (ADCSRA & (1 << ADSC));
     horizontal = ADC;
+
+    ADCSRA &= ~(1 << ADSC);
 
     switch(joystickState) {
         case JOYSTICK_START:
@@ -112,26 +96,10 @@ void JoystickSM() {
 
     switch(joystickState) {
         case JOYSTICK_START:
-		up = 0;
-		down = 0;
 		right = 0;
 		left = 0;
 		break;
 	case JOYSTICK_SET_DIRECTION:
-		if(vertical <= 8) {
-                   up = 1;
-		}
-		else {
-                   up = 0;
-		}
-
-		if(vertical >= 0x3F0) {
-                    down = 1;
-		}
-		else {
-                    down = 0;
-		}
-
 		if(horizontal <= 8) {
                    left = 1;
                 }
@@ -150,7 +118,7 @@ void JoystickSM() {
     }
 }
 
-enum MoveBlock {MOVE_START, MOVE_STILL, MOVE_UP, MOVE_DOWN, MOVE_RIGHT, MOVE_LEFT} moveState;
+enum MoveBlock {MOVE_START, MOVE_STILL, MOVE_MOVE} moveState;
 
 void MoveSM() {
     switch(moveState) {
@@ -158,26 +126,14 @@ void MoveSM() {
 	    moveState = MOVE_STILL;
 	    break;
 	case MOVE_STILL:
-	    if (up) {
-	        moveState = MOVE_UP;	    
+	    if (right || left) {
+                moveState = MOVE_MOVE;
             }
-	    else if (down) {
-                moveState = MOVE_DOWN;
-	    }
-	    else if (right) {
-                moveState = MOVE_RIGHT;
-            }
-	    else if (left) {
-                moveState = MOVE_LEFT;
-	    }
 	    else {
                 moveState = MOVE_STILL;
 	    }
 	    break;
-	case MOVE_UP:
-	case MOVE_DOWN:
-	case MOVE_RIGHT:
-	case MOVE_LEFT:
+	case MOVE_MOVE:
 	    moveState = MOVE_STILL;
 	    break;
 	default: break;
@@ -186,30 +142,76 @@ void MoveSM() {
     switch(moveState) {
         case MOVE_START: break;
         case MOVE_STILL: break;
-        case MOVE_UP:
-	    ledmatrix7219d88_setrow(0, cur_col, 0b00000000);
-	    cur_col++;
-	    break;
-        case MOVE_DOWN:
-	    ledmatrix7219d88_setrow(0, cur_col, 0b00000000);
-	    cur_col--;
-	    break;
-        case MOVE_RIGHT:
-	    ledmatrix7219d88_setrow(0, cur_col + 1, 0b00000000);
-	    ledmatrix7219d88_setrow(0, cur_col + 1, 0b00000000);
-	    ledmatrix7219d88_setrow(0, cur_col - 1, 0b00000000);
-	    cur_row++;
-	    break;
-	case MOVE_LEFT:
-	    ledmatrix7219d88_setrow(0, cur_col + 1, 0b00000000);
-            ledmatrix7219d88_setrow(0, cur_col + 1, 0b00000000);
-            ledmatrix7219d88_setrow(0, cur_col - 1, 0b00000000);
-	    cur_row--;
+	case MOVE_MOVE:
+	    moveBlock1(0, left, right);
 	    break;
 	default: break;
     }
 
-    ledmatrix7219d88_setrow(0, cur_col, rows[cur_row]);
+}
+
+enum DownStates {DOWN_START, DOWN_LOOP} downState;
+
+void DownSM() {
+    switch(downState) {
+        case DOWN_START:
+            downState = DOWN_LOOP;
+	    break;
+	case DOWN_LOOP:
+	    downState = DOWN_LOOP;
+	    break;
+	default:
+	   break;
+    }
+
+    switch(downState) {
+        case DOWN_START: 
+		block1.cur_col1 = 0;
+                block1.cur_col2 = 0;
+                block1.cur_row1 = 1;
+                block1.cur_row2 = 2;
+		break;
+	case DOWN_LOOP: 
+	        moveBlock1(1, 0, 0);
+		break;
+	default: break;
+    }
+}
+
+enum SoundStates {SOUND_START, SOUND_LOOP} soundState;
+
+void SoundSM() {
+    unsigned char sound;
+
+    switch(soundState) {
+        case SOUND_START:
+	    soundState = SOUND_LOOP;
+	    break;
+	case SOUND_LOOP:
+	    soundState = SOUND_LOOP;
+	    break;
+	default: break;
+    }
+
+    switch(soundState) {
+        case SOUND_START:
+	    sound = 0;
+	    sound_detected = 0;
+	    break;
+        case SOUND_LOOP:
+            ADMUX = 0x02;
+            ADCSRA |= (1 << ADSC);
+            while (ADCSRA & (1 << ADSC));
+            sound = ADC;
+
+            ADCSRA &= ~(1 << ADSC);
+
+	    if (sound >= 15) {
+                sound_detected = (~sound_detected) & 0x01;
+	    }
+	    break;
+	default: break;
+    }
 }
 
 int main(void) {
@@ -217,25 +219,42 @@ int main(void) {
     DDRD = 0xFF; PORTD = 0x00;
 
     ADC_init();
+    nokia_lcd_init();
 
-    TimerSet(10);
-    TimerOn();
-    
     ledmatrix7219d88_init();
+
+    nokia_lcd_clear();
+    nokia_lcd_display();
 
     joystickState = JOYSTICK_START;
     moveState = MOVE_START;
+    soundState = SOUND_START;
+    downState = DOWN_START;
 
-    unsigned long i = 0;
-
+    unsigned long move_i = 0;
+    unsigned long sound_i = 0;
+    
+    TimerSet(10);
+    TimerOn();
     /* Insert your solution below */
     while (1) {
         JoystickSM();
-	if (i == 250) {
-	    MoveSM();
-	    i = 0;
+
+	if (move_i == 250) {
+	    if (sound_detected) {
+	        MoveSM();
+	        DownSM();
+	    }
+	    move_i = 0;
 	}
-	i += 10;
+
+	if (sound_i == 70) {
+            SoundSM();
+	    sound_i = 0;
+	}
+
+	move_i += 10;
+	sound_i += 10;
 
 	while (!TimerFlag) { };
 	TimerFlag = 0;
